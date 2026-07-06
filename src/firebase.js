@@ -3,17 +3,17 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: "AIzaSyDsDo78qPF10oIBM1Vjw4EjytE88sVxhg8",
+  authDomain: "cologne-inventory.firebaseapp.com",
+  projectId: "cologne-inventory",
+  storageBucket: "cologne-inventory.firebasestorage.app",
+  messagingSenderId: "880062110085",
+  appId: "1:880062110085:web:cd0f8ecd7d7c9ddde5ccec",
 };
 
 export const firebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
 
-const app = firebaseConfigured ? initializeApp(firebaseConfig) : null;
-export const auth = firebaseConfigured ? getAuth(app) : null;
-export const googleProvider = firebaseConfigured ? new GoogleAuthProvider() : null;
-export const db = firebaseConfigured ? getFirestore(app) : null;
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+export const db = getFirestore(app);
