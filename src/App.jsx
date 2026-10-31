@@ -384,7 +384,8 @@ function InstallToHomeScreenBanner() {
   );
 }
 
-function TopBar({ query, setQuery, onAdd, onExportCsv, onImportClick, onBackupJson, user, onSignOut }) {
+function TopBar({ query, setQuery, onAdd, onExportCsv, onImportClick, onBackupJson, user, onSignOut, selectedCount = 0 }) {
+  const exportLabel = selectedCount > 0 ? `Export (${selectedCount})` : "Export";
   return (
     <div className="sticky top-0 z-20 border-b border-zinc-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:px-6">
@@ -403,7 +404,7 @@ function TopBar({ query, setQuery, onAdd, onExportCsv, onImportClick, onBackupJs
               Import
             </Button>
             <Button variant="ghost" icon={Download} onClick={onExportCsv}>
-              Export
+              {exportLabel}
             </Button>
             <Button variant="ghost" icon={Download} onClick={onBackupJson}>
               Backup JSON
@@ -427,7 +428,7 @@ function TopBar({ query, setQuery, onAdd, onExportCsv, onImportClick, onBackupJs
               Import
             </Button>
             <Button variant="ghost" icon={Download} onClick={onExportCsv}>
-              Export
+              {exportLabel}
             </Button>
             <Button variant="secondary" icon={Plus} onClick={onAdd}>
               Add
@@ -1283,6 +1284,7 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [invSort, setInvSort] = useState({ key: "fragrance", dir: "asc" });
   const [catSort, setCatSort] = useState({ key: "fragrance", dir: "asc" });
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
 
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [wearModal, setWearModal] = useState({ open: false, bottleId: null, entryId: null });
@@ -1339,6 +1341,12 @@ export default function App() {
 
   const fragrancesById = useMemo(() => new Map(data.fragrances.map((f) => [f.id, f])), [data.fragrances]);
   const bottlesById = useMemo(() => new Map(data.bottles.map((b) => [b.id, b])), [data.bottles]);
+
+  /* Selected ids that still exist (ignores bottles removed after selection, e.g. by delete/import) */
+  const liveSelectedIds = useMemo(
+    () => new Set([...selectedIds].filter((id) => bottlesById.has(id))),
+    [selectedIds, bottlesById]
+  );
 
   const wearsByBottleId = useMemo(() => {
     const m = new Map();
@@ -1399,15 +1407,38 @@ export default function App() {
     [data.bottles]
   );
 
+  /* ─── Selection (for exporting a subset) ─── */
+  const toggleSelected = (bottleId) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(bottleId)) next.delete(bottleId);
+      else next.add(bottleId);
+      return next;
+    });
+  };
+
+  const toggleSelectedMany = (bottleIds) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = bottleIds.length > 0 && bottleIds.every((id) => next.has(id));
+      if (allSelected) bottleIds.forEach((id) => next.delete(id));
+      else bottleIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
   /* ─── Import / export ─── */
   const openImport = () => importInputRef.current?.click();
 
   const exportCsv = () => {
+    const bottles = liveSelectedIds.size ? data.bottles.filter((b) => liveSelectedIds.has(b.id)) : data.bottles;
     const headers = [
       "Brand", "Name", "Inspired_By", "Top_Notes", "Middle_Notes", "Base_Notes", "Gender", "Seasons",
       "Occasions", "Size_mL", "Price_Paid", "Fill_Level", "Status", "Purchased_From", "Purchase_Date", "Notes",
     ];
-    const rows = data.bottles.map((b) => {
+    const rows = bottles.map((b) => {
       const f = fragrancesById.get(b.fragranceId);
       return [
         f?.brand || "", f?.name || "", f?.og || "", f?.topNotes || "", f?.middleNotes || "", f?.baseNotes || "",
@@ -1416,7 +1447,8 @@ export default function App() {
       ];
     });
     const csv = [headers.map(csvEscape).join(","), ...rows.map((r) => r.map(csvEscape).join(","))].join("\n");
-    downloadText(`cologne_inventory_${new Date().toISOString().slice(0, 10)}.csv`, csv, "text/csv");
+    const suffix = liveSelectedIds.size ? `_selected_${bottles.length}` : "";
+    downloadText(`cologne_inventory${suffix}_${new Date().toISOString().slice(0, 10)}.csv`, csv, "text/csv");
   };
 
   const backupJson = () => {
@@ -1565,7 +1597,32 @@ export default function App() {
       return { key: b.id, bottle: b, fragrance: f, wearCount: wears.length, lastWear };
     });
 
+    const visibleIds = viewBottles.map((b) => b.id);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+
     const columns = [
+      {
+        key: "select",
+        header: (
+          <input
+            type="checkbox"
+            aria-label="Select all visible bottles"
+            className="h-4 w-4 cursor-pointer accent-zinc-900"
+            checked={allVisibleSelected}
+            onChange={() => toggleSelectedMany(visibleIds)}
+          />
+        ),
+        cell: (r) => (
+          <input
+            type="checkbox"
+            aria-label={`Select ${r.fragrance?.name || "bottle"}`}
+            className="h-4 w-4 cursor-pointer accent-zinc-900"
+            checked={selectedIds.has(r.bottle.id)}
+            onClick={(e) => e.stopPropagation()}
+            onChange={() => toggleSelected(r.bottle.id)}
+          />
+        ),
+      },
       {
         key: "fragrance",
         header: "Fragrance",
@@ -1671,6 +1728,23 @@ export default function App() {
             <Pill tone="neutral">{data.wears.length} wears logged</Pill>
           </div>
         </div>
+
+        {liveSelectedIds.size > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5">
+            <div className="text-sm font-semibold text-zinc-800">
+              {liveSelectedIds.size} bottle{liveSelectedIds.size === 1 ? "" : "s"} selected
+              <span className="ml-2 font-normal text-zinc-500">selection is kept while you search — add from multiple searches, then export</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="primary" icon={Download} onClick={exportCsv}>
+                Export selected
+              </Button>
+              <Button variant="ghost" icon={X} onClick={clearSelection}>
+                Clear
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         {data.bottles.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-10 text-center">
@@ -1870,6 +1944,7 @@ export default function App() {
         onBackupJson={backupJson}
         user={user}
         onSignOut={() => signOut(auth)}
+        selectedCount={liveSelectedIds.size}
       />
 
       <input
